@@ -191,13 +191,13 @@ namespace nobpp
         }
 
         CommandBuilder& add_include_dir(const std::string& dir) {
-            self.include_dir.push_back(dir);
+            self.include_dirs.push_back(dir);
             return self;
         }
 
         CommandBuilder& add_include_dirs(const std::vector<std::string>& dirs) {
             for (const std::string& dir : dirs) {
-                self.include_dir.push_back(dir);
+                self.include_dirs.push_back(dir);
             }
             return self;
         }
@@ -282,6 +282,10 @@ namespace nobpp
                 command.push_back(file);
             }
 
+            for (const std::string& include_dir : self.include_dirs) {
+                command.push_back("-I" + include_dir);
+            }
+
             if (self.output != "") {
                 command.push_back("-o");
                 command.push_back(output);
@@ -301,7 +305,7 @@ namespace nobpp
         Language language = Language::cpp;
         TargetOS target_os = TargetOS::windows;
         OptimizationLevel optimization_level = OptimizationLevel::o3;
-        std::vector<std::string> include_dir;
+        std::vector<std::string> include_dirs;
         std::vector<std::string> files;
         std::vector<std::string> options;
         std::string output;
