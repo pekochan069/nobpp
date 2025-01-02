@@ -4,11 +4,11 @@
 
 This project is a build tool(kind of) for C/C++.
 
-It's heavily inspired by [tsoding](https://www.twitch.tv/tsoding)'s [nob.h](https://github.com/tsoding/nob.h).
+This project is heavily inspired by [tsoding](https://www.twitch.tv/tsoding)'s [nob.h](https://github.com/tsoding/nob.h).
 
 The idea is simple.
 
-> I should be able to create c++ executable with only compiler. No cmake, No make, No visual studio, No anything but compiler.
+> I should be able to create c++ binary with only compiler. No cmake, No make, No visual studio, No anything but compiler.
 
 ## How to use it
 
@@ -29,14 +29,15 @@ Copy Paste the `nobpp.hpp` to your project.
 
 int main()
 {
-    CommandBuilder builder = CommandBuilder();
+    nobpp::CommandBuilder builder = nobpp::CommandBuilder();
 
     builder.set_language(nobpp::Language::cpp)
         .set_target_os(nobpp::TargetOS::windows)
         .set_optimization_level(nobpp::OptimizationLevel::o3)
         .add_options({"-ffast-math"})
-        .add_files("./src")
-        .set_output("build");
+        .add_file("./test.cpp")
+        .set_output("test")
+        .run();
 }
 ```
 
