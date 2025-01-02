@@ -25,7 +25,7 @@ Copy Paste the `nobpp.hpp` to your project.
 
 ```c++
 // build.cpp or nobpp.cpp or whatever.cpp
-#include <nobpp.hpp>
+#include "nobpp.hpp"
 
 int main()
 {
