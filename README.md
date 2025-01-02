@@ -14,10 +14,10 @@ The idea is simple.
 
 ### Requirements
 
-[clang](https://clang.llvm.org/) is required if you don't want to change the nobpp source code.
+[clang](https://clang.llvm.org/) is required if you don't want to edit the nobpp source code.
 
 > [!NOTE]
-> I chose Clang as the compiler of the choice for cross-platform support, but with some modifications to the source code, it can be configured to work with GCC, MSVC, or other compilers as needed.
+> I chose Clang as the compiler of choice for cross-platform support, but with some modifications to the source code, it can be configured to work with GCC, MSVC, or other compilers as needed.
 
 ### Using nobpp
 
