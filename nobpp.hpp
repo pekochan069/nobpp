@@ -224,13 +224,11 @@ namespace nobpp
 
 
     void run_command_sync(const std::string& command) {
-        std::wstring wcommand = std::wstring(command.begin(), command.end());
-        _wspawnlp(_P_WAIT, _T("powershell.exe"), _T("powershell.exe"), _T("-c"), wcommand.c_str(), NULL);
+        _spawnlp(_P_WAIT, "powershell.exe", "powershell.exe", "-c", command.c_str(), NULL);
     }
 
     void run_command_async(const std::string& command) {
-        std::wstring wcommand = std::wstring(command.begin(), command.end());
-        _wspawnlp(_P_NOWAIT, _T("powershell.exe"), _T("powershell.exe"), _T("-c"), wcommand.c_str(), NULL);
+        _spawnlp(_P_NOWAIT, "powershell.exe", "powershell.exe", "-c", command.c_str(), NULL);
     }
 #else
     constexpr char PATH_SEPARATOR = '/';
@@ -761,5 +759,117 @@ namespace nobpp
         std::vector<std::string> options;
         std::string build_dir;
         std::string output;
+    };
+
+
+    /**
+     * @brief Queue of commands that can run multiple commands in parallel
+     * @code
+     * ```cpp
+     * #include "nobpp.hpp"
+     *
+     * int main() {
+     *     const nobpp::CommandBuilder builder1 = nobpp::CommandBuilder();
+     *     const nobpp::CommandBuilder builder2 = nobpp::CommandBuilder();
+     *     const nobpp::CommandBuilder builder3 = nobpp::CommandBuilder();
+     *     const nobpp::CommandBuilder builder4 = nobpp::CommandBuilder();
+     *
+     *     const nobpp::CommandQueue queue = nobpp::CommandQueue(4);
+     *     queue.add_builder(builder1)
+     *          .add_builder(builder2)
+     *          .add_builder(builder3)
+     *          .add_builder(builder4);
+     * }
+     * ```
+     * @endcode
+     */
+    class CommandQueue {
+    public:
+        /**
+         * @brief Construct a new Command Queue object
+         *
+         * @param num_processes The number of processes to run in parallel
+         * @code
+         * ```cpp
+         * nobpp::CommandQueue queue = nobpp::CommandQueue(4);
+         * ```
+         * @endcode
+         */
+        CommandQueue(size_t num_processes = 4)
+            : num_processes(num_processes) {};
+
+        /**
+         * @brief Add command builder to the queue
+         *
+         * @param builder
+         * @return `CommandQueue&`
+         * @code
+         * ```cpp
+         * const nobpp::CommandBuilder builder = nobpp::CommandBuilder();
+         * queue.add_builder(builder);
+         * ```
+         * @endcode
+         */
+        CommandQueue& add_builder(const CommandBuilder& builder) {
+            self.command_builders.push_back(builder);
+            return self;
+        }
+
+        void run() {
+            for (const CommandBuilder& builder : self.command_builders) {
+                const std::string command = builder.create_command();
+                const std::string id = std::to_string(processes.size());
+
+                processes.push_back({command, id, false});
+            }
+
+            for (size_t i = 0; i < num_processes; ++i) {
+                if (i >= processes.size()) {
+                    break;
+                }
+
+                const Process& process = processes[i];
+                run_command_sync(process.command);
+                processes[i].running = true;
+            }
+
+            while (true) {
+                for (size_t i = 0; i < processes.size(); ++i) {
+                    Process& process = processes[i];
+
+                    if (process.running) {
+                        continue;
+                    }
+
+                    run_command_sync(process.command);
+                    processes[i].running = true;
+                }
+
+                bool all_done = true;
+                for (const Process& process : processes) {
+                    if (!process.running) {
+                        all_done = false;
+                        break;
+                    }
+                }
+
+                if (all_done) {
+                    break;
+                }
+            }
+        }
+
+    private:
+        struct Process {
+            std::string command;
+            std::string id;
+            bool running;
+        };
+
+        CommandQueue& self = *this;
+
+        size_t num_processes;
+        std::vector<CommandBuilder> command_builders;
+        std::vector<Process> processes;
     };
 }  // namespace nobpp
