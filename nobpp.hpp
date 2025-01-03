@@ -31,6 +31,7 @@
  */
 
 #pragma once
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <string>
@@ -39,7 +40,73 @@
 
 namespace nobpp
 {
+    std::vector<std::string> split(const std::string& str, const char delimiter) {
+        std::vector<std::string> parts;
+        std::string part;
+
+        for (const char c : str) {
+            if (c == delimiter) {
+                parts.push_back(part);
+                part = "";
+            } else {
+                part += c;
+            }
+        }
+
+        parts.push_back(part);
+
+        return parts;
+    }
+
+    std::vector<std::string> split(const std::string& str, std::string&& delimiter) {
+        std::vector<std::string> parts;
+        std::string part;
+
+        for (const char c : str) {
+            if (c == delimiter[0]) {
+                parts.push_back(part);
+                part = "";
+            } else {
+                part += c;
+            }
+        }
+
+        parts.push_back(part);
+
+        return parts;
+    }
+
+    std::string join(std::vector<std::string> parts, const char delimiter) {
+        std::string out = "";
+
+        for (size_t i = 0; i < parts.size(); ++i) {
+            out += parts[i];
+
+            if (i != parts.size() - 1) {
+                out += delimiter;
+            }
+        }
+
+        return out;
+    }
+
+    std::string join(std::vector<std::string> parts, std::string&& delimiter) {
+        std::string out = "";
+
+        for (size_t i = 0; i < parts.size(); ++i) {
+            out += parts[i];
+
+            if (i != parts.size() - 1) {
+                out += delimiter;
+            }
+        }
+
+        return out;
+    }
+
 #ifdef _WIN32
+    constexpr char PATH_SEPARATOR = '\\';
+
     #define WIN32_LEAN_AND_MEAN
     #include <process.h>
     #include <stdio.h>
@@ -48,23 +115,22 @@ namespace nobpp
     #include <windows.h>
     #pragma comment(lib, "User32.lib")
 
-    std::vector<std::string> readdir(const wchar_t* target_dir,
-                                     std::function<bool(const std::string&)> file_predicate,
-                                     std::string prefix = "") {
+    std::vector<std::string> readdir(const wchar_t* wtarget_dir,
+                                     std::function<bool(const std::string&)> file_predicate) {
         std::vector<std::string> files;
         size_t length_of_arg;
         wchar_t szDir[MAX_PATH];
         WIN32_FIND_DATAW ffd;
         HANDLE hFind = INVALID_HANDLE_VALUE;
 
-        StringCchLengthW(target_dir, MAX_PATH, &length_of_arg);
+        StringCchLengthW(wtarget_dir, MAX_PATH, &length_of_arg);
 
         if (length_of_arg > (MAX_PATH - 3)) {
-            std::wcout << "Directory path is too long." << target_dir << "\n";
+            std::wcout << "Directory path is too long." << wtarget_dir << "\n";
             return files;
         }
 
-        StringCchCopyW(szDir, MAX_PATH, target_dir);
+        StringCchCopyW(szDir, MAX_PATH, wtarget_dir);
         StringCchCatW(szDir, MAX_PATH, L"\\*");
 
         hFind = FindFirstFileW(szDir, &ffd);
@@ -80,18 +146,19 @@ namespace nobpp
                     continue;
                 }
 
-                std::wstring wdir_name = std::wstring(target_dir) + L"\\" + ffd.cFileName;
-                std::vector<std::string> files_in_dir =
-                    readdir(wdir_name.c_str(), file_predicate, std::string(wdir_name.begin(), wdir_name.end()) + "\\");
+                std::wstring wdir_name = std::wstring(wtarget_dir) + L"\\" + ffd.cFileName;
+                std::vector<std::string> files_in_dir = readdir(wdir_name.c_str(), file_predicate);
 
                 files.insert(files.end(), files_in_dir.begin(), files_in_dir.end());
+                continue;
             }
 
             const std::wstring wfile_name = ffd.cFileName;
             const std::string file_name(wfile_name.begin(), wfile_name.end());
 
             if (file_predicate(file_name)) {
-                files.push_back(prefix + file_name);
+                std::string target_dir(wtarget_dir, wtarget_dir + wcslen(wtarget_dir));
+                files.push_back(target_dir + PATH_SEPARATOR + file_name);
             }
         } while (FindNextFileW(hFind, &ffd) != 0);
 
@@ -108,8 +175,51 @@ namespace nobpp
     std::vector<std::string> readdir(const std::string& target,
                                      std::function<bool(const std::string&)> file_predicate) {
         std::wstring wtarget = std::wstring(target.begin(), target.end());
+        std::replace(wtarget.begin(), wtarget.end(), '/', PATH_SEPARATOR);
         const wchar_t* wtarget_cstr = wtarget.c_str();
         return readdir(wtarget_cstr, file_predicate);
+    }
+
+    bool dir_exists(const std::string& target_dir) {
+        const std::wstring wtarget_dir = std::wstring(target_dir.begin(), target_dir.end());
+        const wchar_t* szDir = wtarget_dir.c_str();
+        DWORD dwAttrib = GetFileAttributesW(szDir);
+
+        return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+    }
+
+    void createDirectoryRecursively(const std::wstring& target_dir) {
+        static const std::wstring separators(L"\\/");
+
+        // If the specified directory name doesn't exist, do our thing
+        DWORD fileAttributes = GetFileAttributesW(target_dir.c_str());
+        if (fileAttributes == INVALID_FILE_ATTRIBUTES) {
+            // Recursively do it all again for the parent directory, if any
+            std::size_t slashIndex = target_dir.find_last_of(separators);
+            if (slashIndex != std::wstring::npos) {
+                createDirectoryRecursively(target_dir.substr(0, slashIndex));
+            }
+
+            // Create the last directory on the path (the recursive calls will have taken
+            // care of the parent directories by now)
+            BOOL result = CreateDirectoryW(target_dir.c_str(), nullptr);
+            if (result == FALSE) {
+                throw std::runtime_error("Could not create directory");
+            }
+
+        } else {  // Specified directory name already exists as a file or directory
+            bool isDirectoryOrJunction = ((fileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) ||
+                                         ((fileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+
+            if (!isDirectoryOrJunction) {
+                throw std::runtime_error("Could not create directory because a file with the same name exists");
+            }
+        }
+    }
+
+    void createDirectoryRecursively(const std::string& target_dir) {
+        std::wstring wtarget_dir = std::wstring(target_dir.begin(), target_dir.end());
+        createDirectoryRecursively(wtarget_dir);
     }
 
 
@@ -117,6 +227,8 @@ namespace nobpp
         _spawnlp(_P_WAIT, "powershell.exe", "powershell.exe", "-c", command.c_str(), NULL);
     }
 #else
+    constexpr char PATH_SEPARATOR = '/';
+
     #include <dirent.h>
     std::vector<std::string> readdir(std::string target) {
         return {};
@@ -129,31 +241,45 @@ namespace nobpp
     enum struct TargetOS { windows, linux };
     enum struct OptimizationLevel { none, o1, o2, o3, os, oz };
 
-    bool is_c_file(const std::string& file) {
-        return file.find(".c") != std::string::npos;
+    bool is_c_file(const std::string& path) {
+        const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
+        const std::string file_name = parts[parts.size() - 1];
+
+        return path.find(".c") != std::string::npos;
     }
 
-    bool is_c_header_file(const std::string& file) {
-        return file.find(".h") != std::string::npos;
+    bool is_c_header_file(const std::string& path) {
+        const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
+        const std::string file_name = parts[parts.size() - 1];
+
+        return path.find(".h") != std::string::npos;
     }
 
-    bool is_cpp_file(const std::string& file) {
+    bool is_cpp_file(const std::string& path) {
         static const std::unordered_set<std::string> cpp_extensions = {
             ".cpp", ".cc", ".c++", ".cxx", ".mpp", ".ipp", ".ixx", ".cppm"};
-        size_t pos = file.rfind('.');
+
+        const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
+        const std::string file_name = parts[parts.size() - 1];
+
+        size_t pos = file_name.rfind('.');
         if (pos == std::string::npos)
             return false;
-        std::string ext = file.substr(pos);
+        std::string ext = file_name.substr(pos);
         return cpp_extensions.find(ext) != cpp_extensions.end();
     }
 
-    bool is_cpp_header_file(const std::string& file) {
+    bool is_cpp_header_file(const std::string& path) {
         static const std::unordered_set<std::string> cpp_header_extensions = {
             ".h", ".hh", ".hpp", ".hxx", ".h++", ".inl"};
-        size_t pos = file.rfind('.');
+
+        const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
+        const std::string file_name = parts[parts.size() - 1];
+
+        size_t pos = file_name.rfind('.');
         if (pos == std::string::npos)
             return false;
-        std::string ext = file.substr(pos);
+        std::string ext = file_name.substr(pos);
         return cpp_header_extensions.find(ext) != cpp_header_extensions.end();
     }
 
@@ -171,6 +297,30 @@ namespace nobpp
         return out;
     }
 
+
+    /**
+     * \brief Command Builder to create and run build commands
+     * \code
+     * ```cpp
+     * #include "nobpp.hpp"
+     *
+     * int main() {
+     *      nobpp::CommandBuilder builder = nobpp::CommandBuilder();
+     *
+     *      builder.set_language(nobpp::Language::cpp)
+     *          .set_target_os(nobpp::TargetOS::windows)
+     *          .set_optimization_level(nobpp::OptimizationLevel::o3)
+     *          .add_options({"-ffast-math"})
+     *          .add_file("./test.cpp")
+     *          .set_build_dir("./bin")
+     *          .set_output("test")
+     *          .run();
+     *
+     *      return 0;
+     * }
+     * ```
+     * \endcode
+     */
     class CommandBuilder {
     public:
         CommandBuilder() = default;
@@ -195,13 +345,6 @@ namespace nobpp
             return self;
         }
 
-        CommandBuilder& add_include_dirs(const std::vector<std::string>& dirs) {
-            for (const std::string& dir : dirs) {
-                self.include_dirs.push_back(dir);
-            }
-            return self;
-        }
-
         CommandBuilder& add_file(const std::string& file) {
             self.files.push_back(file);
             return self;
@@ -223,10 +366,23 @@ namespace nobpp
             return self;
         }
 
+        CommandBuilder& add_files(const std::string target, std::function<bool(const std::string&)> file_predicate) {
+            const std::vector<std::string> file_list = readdir(target, file_predicate);
+            for (const std::string& file : file_list) {
+                self.files.push_back(file);
+            }
+            return self;
+        }
+
         CommandBuilder& add_options(const std::vector<std::string>& opts) {
             for (const std::string& opt : opts) {
                 self.options.push_back(opt);
             }
+            return self;
+        }
+
+        CommandBuilder& set_build_dir(const std::string& dir) {
+            self.build_dir = dir;
             return self;
         }
 
@@ -286,10 +442,21 @@ namespace nobpp
                 command.push_back("-I" + include_dir);
             }
 
-            if (self.output != "") {
+            if (self.build_dir != "" && self.output != "") {
+                if (!dir_exists(self.build_dir)) {
+                    createDirectoryRecursively(self.build_dir);
+                }
+
+                std::string out_file = self.build_dir + "/" + self.output;
                 command.push_back("-o");
-                command.push_back(output);
+                command.push_back(out_file);
+            } else {
+                if (self.output != "") {
+                    command.push_back("-o");
+                    command.push_back(output);
+                }
             }
+
 
             return join(command);
         }
@@ -308,6 +475,7 @@ namespace nobpp
         std::vector<std::string> include_dirs;
         std::vector<std::string> files;
         std::vector<std::string> options;
+        std::string build_dir;
         std::string output;
     };
 
