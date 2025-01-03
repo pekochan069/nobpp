@@ -223,8 +223,14 @@ namespace nobpp
     }
 
 
-    void run_command(const std::string& command) {
-        _spawnlp(_P_WAIT, "powershell.exe", "powershell.exe", "-c", command.c_str(), NULL);
+    void run_command_sync(const std::string& command) {
+        std::wstring wcommand = std::wstring(command.begin(), command.end());
+        _wspawnlp(_P_WAIT, _T("powershell.exe"), _T("powershell.exe"), _T("-c"), wcommand.c_str(), NULL);
+    }
+
+    void run_command_async(const std::string& command) {
+        std::wstring wcommand = std::wstring(command.begin(), command.end());
+        _wspawnlp(_P_NOWAIT, _T("powershell.exe"), _T("powershell.exe"), _T("-c"), wcommand.c_str(), NULL);
     }
 #else
     constexpr char PATH_SEPARATOR = '/';
@@ -234,7 +240,9 @@ namespace nobpp
         return {};
     }
 
-    void run_command(const std::string& command) {}
+    void run_command_sync(const std::string& command) {}
+
+    void run_command_async(const std::string& command) {}
 #endif
 
     enum struct Language { c, cpp };
@@ -299,8 +307,8 @@ namespace nobpp
 
 
     /**
-     * \brief Command Builder to create and run build commands
-     * \code
+     * @brief Command Builder to create and run build commands
+     * @code
      * ```cpp
      * #include "nobpp.hpp"
      *
@@ -319,38 +327,150 @@ namespace nobpp
      *      return 0;
      * }
      * ```
-     * \endcode
+     * @endcode
      */
     class CommandBuilder {
     public:
+        /**
+         * @brief Construct a new Command Builder object
+         * @return `nobpp::CommandBuilder`
+         * @code
+         * ```cpp
+         * nobpp::CommandBuilder builder = nobpp::CommandBuilder();
+         * ```
+         * @endcode
+         */
         CommandBuilder() = default;
 
-        CommandBuilder& set_language(Language lang) {
-            self.language = lang;
+        /**
+         * @brief Set the language of the source files
+         *
+         * @param language `nobpp::Language::cpp` or `nobpp::Language::c`
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.set_language(nobpp::Language::cpp);
+         * ```
+         * @endcode
+         */
+        CommandBuilder& set_language(Language language) {
+            self.language = language;
             return self;
         }
 
+        /**
+         * @brief Set the target operating system
+         *
+         * @param os `nobpp::TargetOS::windows` or `nobpp::TargetOS::linux`
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.set_target_os(nobpp::TargetOS::windows);
+         * ```
+         * @endcode
+         */
         CommandBuilder& set_target_os(TargetOS os) {
             self.target_os = os;
             return self;
         }
 
+        /**
+         * @brief Set the optimization level
+         *
+         * @param level `nobpp::OptimizationLevel::none`
+         *     | `nobpp::OptimizationLevel::o1`
+         *     | `nobpp::OptimizationLevel::o2`
+         *     | `nobpp::OptimizationLevel::o3`
+         *     | `nobpp::OptimizationLevel::os`,
+         *     | `nobpp::OptimizationLevel::oz`
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.set_optimization_level(nobpp::OptimizationLevel::o3);
+         * ```
+         * @endcode
+         */
         CommandBuilder& set_optimization_level(OptimizationLevel level) {
             self.optimization_level = level;
             return self;
         }
 
+        /**
+         * @brief Add an include directory
+         *
+         * @param dir The directory to include
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_include_dir("./include");
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_include_dir(const char* dir) {
+            self.include_dirs.push_back(dir);
+            return self;
+        }
+
+        /**
+         * @brief Add an include directory
+         *
+         * @param dir The directory to include
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_include_dir("./include");
+         * ```
+         * @endcode
+         */
         CommandBuilder& add_include_dir(const std::string& dir) {
             self.include_dirs.push_back(dir);
             return self;
         }
 
+        /**
+         * @brief Add a source file
+         *
+         * @param file The source file to add
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_file("./src/main.cpp");
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_file(const char* file) {
+            self.files.push_back(file);
+            return self;
+        }
+
+        /**
+         * @brief Add a source file
+         *
+         * @param file The source file to add
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_file("./src/main.cpp");
+         * ```
+         * @endcode
+         */
         CommandBuilder& add_file(const std::string& file) {
             self.files.push_back(file);
             return self;
         }
 
-        CommandBuilder& add_files(const std::string target) {
+        /**
+         * @brief Add source files from a directory
+         *
+         * @param target The directory to search for source files
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_files("./src");
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_files(const char* target) {
             std::function<bool(const std::string&)> file_predicate;
 
             if (self.language == Language::c) {
@@ -366,7 +486,26 @@ namespace nobpp
             return self;
         }
 
-        CommandBuilder& add_files(const std::string target, std::function<bool(const std::string&)> file_predicate) {
+        /**
+         * @brief Add source files from a directory
+         *
+         * @param target The directory to search for source files
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_files("./src");
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_files(const std::string& target) {
+            std::function<bool(const std::string&)> file_predicate;
+
+            if (self.language == Language::c) {
+                file_predicate = is_c_file;
+            } else {
+                file_predicate = is_cpp_file;
+            }
+
             const std::vector<std::string> file_list = readdir(target, file_predicate);
             for (const std::string& file : file_list) {
                 self.files.push_back(file);
@@ -374,6 +513,111 @@ namespace nobpp
             return self;
         }
 
+        /**
+         * @brief Add source files from a directory with a custom file predicate
+         *
+         * @param target The directory to search for source files
+         * @param file_predicate A function that returns true if the file should be included
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_files("./src", [](const std::string& file) {
+         *     return file.find(".cpp") != std::string::npos;
+         * });
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_files(const char* target, std::function<bool(const std::string&)> file_predicate) {
+            const std::vector<std::string> file_list = readdir(target, file_predicate);
+            for (const std::string& file : file_list) {
+                self.files.push_back(file);
+            }
+            return self;
+        }
+
+        /**
+         * @brief Add source files from a directory with a custom file predicate
+         *
+         * @param target The directory to search for source files
+         * @param file_predicate A function that returns true if the file should be included
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_files("./src", [](const std::string& file) {
+         *     return file.find(".cpp") != std::string::npos;
+         * });
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_files(const std::string& target, std::function<bool(const std::string&)> file_predicate) {
+            const std::vector<std::string> file_list = readdir(target, file_predicate);
+            for (const std::string& file : file_list) {
+                self.files.push_back(file);
+            }
+            return self;
+        }
+
+        /**
+         * @brief Add any compiler option
+         *
+         * @param opt A compiler option
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_option("-ffast-math");
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_option(const char* opt) {
+            self.options.push_back(opt);
+            return self;
+        }
+
+        /**
+         * @brief Add any compiler option
+         *
+         * @param opt A compiler option
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_option("-ffast-math");
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_option(const std::string& opt) {
+            self.options.push_back(opt);
+            return self;
+        }
+
+        /**
+         * @brief Add any compiler options
+         *
+         * @param opts A list of compiler options
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_options({"-ffast-math", "-fno-exceptions"});
+         * ```
+         * @endcode
+         */
+        CommandBuilder& add_options(std::initializer_list<std::string>&& opts) {
+            for (const std::string& opt : opts) {
+                self.options.push_back(opt);
+            }
+            return self;
+        }
+
+        /**
+         * @brief Add any compiler options
+         *
+         * @param opts A list of compiler options
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.add_options({"-ffast-math", "-fno-exceptions"});
+         * ```
+         * @endcode
+         */
         CommandBuilder& add_options(const std::vector<std::string>& opts) {
             for (const std::string& opt : opts) {
                 self.options.push_back(opt);
@@ -381,11 +625,33 @@ namespace nobpp
             return self;
         }
 
+        /**
+         * @brief Set the build directory
+         *
+         * @param dir The directory to build the output file in
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.set_build_dir("./bin");
+         * ```
+         * @endcode
+         */
         CommandBuilder& set_build_dir(const std::string& dir) {
             self.build_dir = dir;
             return self;
         }
 
+        /**
+         * @brief Set the output file
+         *
+         * @param output The name of the output file
+         * @return `nobpp::CommandBuilder&`
+         * @code
+         * ```cpp
+         * builder.set_output("test");
+         * ```
+         * @endcode
+         */
         CommandBuilder& set_output(const std::string& output) {
             std::string out = output;
 
@@ -398,6 +664,15 @@ namespace nobpp
             return self;
         }
 
+        /**
+         * @brief Create a command object
+         *
+         * @return std::string
+         * @code
+         * ```cpp
+         * std::string command = builder.create_command();
+         * ```
+         */
         std::string create_command() const {
             std::vector<std::string> command;
 
@@ -461,9 +736,18 @@ namespace nobpp
             return join(command);
         }
 
+        /**
+         * @brief Run the command
+         *
+         * @code
+         * ```cpp
+         * builder.run();
+         * ```
+         * @endcode
+         */
         void run() const {
             const std::string command = create_command();
-            run_command(command);
+            run_command_sync(command);
         }
 
     private:
@@ -478,5 +762,4 @@ namespace nobpp
         std::string build_dir;
         std::string output;
     };
-
 }  // namespace nobpp
