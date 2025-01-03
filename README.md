@@ -23,6 +23,18 @@ The idea is simple.
 
 Copy Paste the `nobpp.hpp` to your project.
 
+```sh
+wget https://raw.githubusercontent.com/pekochan069/nobpp/refs/heads/main/nobpp.hpp
+```
+
+or
+
+```sh
+curl -o nobpp.hpp https://raw.githubusercontent.com/pekochan069/nobpp/refs/heads/main/nobpp.hpp
+```
+
+After that, write build script for your project.
+
 ```c++
 // build.cpp or nobpp.cpp or whatever.cpp
 #include "nobpp.hpp"
