@@ -36,6 +36,7 @@ int main()
         .set_optimization_level(nobpp::OptimizationLevel::o3)
         .add_options({"-ffast-math"})
         .add_file("./test.cpp")
+        .add_build_dir("./bin")
         .set_output("test")
         .run();
 }
@@ -64,3 +65,8 @@ After compilation, you can just run the executable and your project will be comp
 - [x] Executable
 - [ ] Static Library
 - [ ] Dynamic Library
+
+### Features
+
+- [ ] Command Queue
+- [ ] Task
