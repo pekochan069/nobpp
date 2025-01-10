@@ -35,9 +35,11 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <initializer_list>
 #include <iostream>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <unordered_set>
 #include <vector>
 
@@ -121,7 +123,7 @@ constexpr char PATH_SEPARATOR = '\\';
 
 std::vector<std::string> readdir(
     const wchar_t* wtarget_dir,
-    std::function<bool(const std::string&)> file_predicate) {
+    std::function<bool(const std::string&)> file_predicate, bool recursive) {
     std::vector<std::string> files;
     size_t length_of_arg;
     wchar_t szDir[MAX_PATH];
@@ -147,6 +149,10 @@ std::vector<std::string> readdir(
 
     do {
         if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (!recursive) {
+                continue;
+            }
+
             if (wcscmp(ffd.cFileName, L".") == 0 ||
                 wcscmp(ffd.cFileName, L"..") == 0) {
                 continue;
@@ -155,7 +161,7 @@ std::vector<std::string> readdir(
             std::wstring wdir_name =
                 std::wstring(wtarget_dir) + L"\\" + ffd.cFileName;
             std::vector<std::string> files_in_dir =
-                readdir(wdir_name.c_str(), file_predicate);
+                readdir(wdir_name.c_str(), file_predicate, recursive);
 
             files.insert(files.end(), files_in_dir.begin(), files_in_dir.end());
             continue;
@@ -183,11 +189,11 @@ std::vector<std::string> readdir(
 
 std::vector<std::string> readdir(
     const std::string& target,
-    std::function<bool(const std::string&)> file_predicate) {
+    std::function<bool(const std::string&)> file_predicate, bool recursive) {
     std::wstring wtarget = std::wstring(target.begin(), target.end());
     std::replace(wtarget.begin(), wtarget.end(), '/', PATH_SEPARATOR);
     const wchar_t* wtarget_cstr = wtarget.c_str();
-    return readdir(wtarget_cstr, file_predicate);
+    return readdir(wtarget_cstr, file_predicate, recursive);
 }
 
 bool dir_exists(const std::string& target_dir) {
@@ -439,6 +445,57 @@ public:
     }
 
     /**
+     * @brief Add include directories from a list of directories
+     *
+     * @param dirs A list of directories to include
+     * @return `nobpp::CommandBuilder&`
+     * @code
+     * ```cpp
+     * builder.add_include_dirs({"./include", "./src"});
+     * ```
+     * @endcode
+     */
+    CommandBuilder& add_include_dirs(std::initializer_list<std::string> dirs) {
+        self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
+        self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
+                                 dirs.end());
+    }
+
+    /**
+     * @brief Add include directories from a list of directories
+     *
+     * @param dirs A list of directories to include
+     * @return `nobpp::CommandBuilder&`
+     * @code
+     * ```cpp
+     * builder.add_include_dirs({"./include", "./src"});
+     * ```
+     * @endcode
+     */
+    CommandBuilder& add_include_dirs(std::vector<std::string>&& dirs) {
+        self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
+        self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
+                                 dirs.end());
+    }
+
+    /**
+     * @brief Add include directories from a list of directories
+     *
+     * @param dirs A list of directories to include
+     * @return `nobpp::CommandBuilder&`
+     * @code
+     * ```cpp
+     * builder.add_include_dirs({"./include", "./src"});
+     * ```
+     * @endcode
+     */
+    CommandBuilder& add_include_dirs(const std::vector<std::string>& dirs) {
+        self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
+        self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
+                                 dirs.end());
+    }
+
+    /**
      * @brief Add a source file
      *
      * @param file The source file to add
@@ -473,7 +530,8 @@ public:
     /**
      * @brief Add source files from a directory
      *
-     * @param target The directory to search for source files
+     * @param target_directory The directory to search for source files
+     * @param recursive Whether to search recursively
      * @return `nobpp::CommandBuilder&`
      * @code
      * ```cpp
@@ -481,7 +539,8 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(const char* target) {
+    CommandBuilder& add_files(const char* target_directory,
+                              bool recursive = true) {
         std::function<bool(const std::string&)> file_predicate;
 
         if (self.language == Language::c) {
@@ -491,7 +550,7 @@ public:
         }
 
         const std::vector<std::string> file_list =
-            readdir(target, file_predicate);
+            readdir(target_directory, file_predicate, recursive);
         for (const std::string& file : file_list) {
             self.files.push_back(file);
         }
@@ -501,7 +560,8 @@ public:
     /**
      * @brief Add source files from a directory
      *
-     * @param target The directory to search for source files
+     * @param target_directory The directory to search for source files
+     * @param recursive Whether to search recursively
      * @return `nobpp::CommandBuilder&`
      * @code
      * ```cpp
@@ -509,7 +569,8 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(const std::string& target) {
+    CommandBuilder& add_files(const std::string& target_directory,
+                              bool recursive = true) {
         std::function<bool(const std::string&)> file_predicate;
 
         if (self.language == Language::c) {
@@ -519,7 +580,7 @@ public:
         }
 
         const std::vector<std::string> file_list =
-            readdir(target, file_predicate);
+            readdir(target_directory, file_predicate, recursive);
         for (const std::string& file : file_list) {
             self.files.push_back(file);
         }
@@ -529,9 +590,10 @@ public:
     /**
      * @brief Add source files from a directory with a custom file predicate
      *
-     * @param target The directory to search for source files
+     * @param target_directory The directory to search for source files
      * @param file_predicate A function that returns true if the file should be
      * included
+     * @param recursive Whether to search recursively
      * @return `nobpp::CommandBuilder&`
      * @code
      * ```cpp
@@ -542,10 +604,11 @@ public:
      * @endcode
      */
     CommandBuilder& add_files(
-        const char* target,
-        std::function<bool(const std::string&)> file_predicate) {
+        const char* target_directory,
+        std::function<bool(const std::string&)> file_predicate,
+        bool recursive = true) {
         const std::vector<std::string> file_list =
-            readdir(target, file_predicate);
+            readdir(target_directory, file_predicate, recursive);
         for (const std::string& file : file_list) {
             self.files.push_back(file);
         }
@@ -555,9 +618,10 @@ public:
     /**
      * @brief Add source files from a directory with a custom file predicate
      *
-     * @param target The directory to search for source files
+     * @param target_directory The directory to search for source files
      * @param file_predicate A function that returns true if the file should be
      * included
+     * @param recursive Whether to search recursively
      * @return `nobpp::CommandBuilder&`
      * @code
      * ```cpp
@@ -568,14 +632,64 @@ public:
      * @endcode
      */
     CommandBuilder& add_files(
-        const std::string& target,
-        std::function<bool(const std::string&)> file_predicate) {
+        const std::string& target_directory,
+        std::function<bool(const std::string&)> file_predicate,
+        bool recursive = true) {
         const std::vector<std::string> file_list =
-            readdir(target, file_predicate);
+            readdir(target_directory, file_predicate, recursive);
         for (const std::string& file : file_list) {
             self.files.push_back(file);
         }
         return self;
+    }
+
+    /**
+     * @brief Add source files from a list of files
+     *
+     * @param files  A list of source files
+     * @return `nobpp::CommandBuilder&`
+     * @code
+     * ```cpp
+     * builder.add_files({"./src/main.cpp", "./src/utils.cpp"});
+     * ```
+     * @endcode
+     */
+    CommandBuilder& add_files(std::initializer_list<std::string> files) {
+        self.files.reserve(self.files.size() + files.size());
+        self.files.insert(self.files.end(), files.begin(), files.end());
+    }
+
+    /**
+     * @brief Add source files from a list of files
+     *
+     * @param files  A list of source files
+     * @return `nobpp::CommandBuilder&`
+     * @code
+     * ```cpp
+     * std::vector<std::string> files = {"./src/main.cpp", "./src/utils.cpp"};
+     * builder.add_files({"./src/main.cpp", "./src/utils.cpp"});
+     * ```
+     * @endcode
+     */
+    CommandBuilder& add_files(std::vector<std::string>&& files) {
+        self.files.reserve(self.files.size() + files.size());
+        self.files.insert(self.files.end(), files.begin(), files.end());
+    }
+
+    /**
+     * @brief Add source files from a list of files
+     *
+     * @param files  A list of source files
+     * @return `nobpp::CommandBuilder&`
+     * @code
+     * ```cpp
+     * builder.add_files({"./src/main.cpp", "./src/utils.cpp"});
+     * ```
+     * @endcode
+     */
+    CommandBuilder& add_files(const std::vector<std::string>& files) {
+        self.files.reserve(self.files.size() + files.size());
+        self.files.insert(self.files.end(), files.begin(), files.end());
     }
 
     /**
