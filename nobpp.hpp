@@ -459,6 +459,7 @@ public:
         self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
         self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
                                  dirs.end());
+        return self;
     }
 
     /**
@@ -476,6 +477,7 @@ public:
         self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
         self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
                                  dirs.end());
+        return self;
     }
 
     /**
@@ -493,6 +495,7 @@ public:
         self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
         self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
                                  dirs.end());
+        return self;
     }
 
     /**
@@ -657,6 +660,7 @@ public:
     CommandBuilder& add_files(std::initializer_list<std::string> files) {
         self.files.reserve(self.files.size() + files.size());
         self.files.insert(self.files.end(), files.begin(), files.end());
+        return self;
     }
 
     /**
@@ -674,6 +678,7 @@ public:
     CommandBuilder& add_files(std::vector<std::string>&& files) {
         self.files.reserve(self.files.size() + files.size());
         self.files.insert(self.files.end(), files.begin(), files.end());
+        return self;
     }
 
     /**
@@ -690,6 +695,7 @@ public:
     CommandBuilder& add_files(const std::vector<std::string>& files) {
         self.files.reserve(self.files.size() + files.size());
         self.files.insert(self.files.end(), files.begin(), files.end());
+        return self;
     }
 
     /**
