@@ -45,6 +45,11 @@
 
 namespace nobpp {
 
+enum struct Compiler { clang, gcc };
+enum struct Language { c, cpp };
+enum struct TargetOS { windows, linux };
+enum struct OptimizationLevel { none, o1, o2, o3, os, oz };
+
 std::vector<std::string> split(const std::string& str, const char delimiter) {
     std::vector<std::string> parts;
     std::string part;
@@ -264,10 +269,6 @@ void run_command_sync(const std::string& command) {}
 void run_command_async(const std::string& command) {}
 #endif
 
-enum struct Language { c, cpp };
-enum struct TargetOS { windows, linux };
-enum struct OptimizationLevel { none, o1, o2, o3, os, oz };
-
 bool is_c_file(const std::string& path) {
     const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
     const std::string file_name = parts[parts.size() - 1];
@@ -358,6 +359,11 @@ public:
      * @endcode
      */
     CommandBuilder() = default;
+
+    CommandBuilder& set_compiler(Compiler compiler) {
+        self.compiler = compiler;
+        return self;
+    }
 
     /**
      * @brief Set the language of the source files
@@ -818,12 +824,21 @@ public:
     std::string create_command() const {
         std::vector<std::string> command;
 
-        switch (self.language) {
-            case Language::cpp:
-                command.push_back("clang++");
+        switch (self.compiler) {
+            case Compiler::clang:
+                if (self.language == Language::c) {
+                    command.push_back("clang");
+                } else {
+                    command.push_back("clang++");
+                }
                 break;
-            case Language::c:
-                command.push_back("clang");
+            case Compiler::gcc:
+                if (self.language == Language::c) {
+                    command.push_back("gcc");
+                } else {
+                    command.push_back("g++");
+                }
+                break;
         }
 
         switch (self.optimization_level) {
@@ -894,8 +909,9 @@ public:
 private:
     CommandBuilder& self = *this;
 
+    Compiler compiler = Compiler::clang;
     Language language = Language::cpp;
-    TargetOS target_os = TargetOS::windows;
+    TargetOS target_os;
     OptimizationLevel optimization_level = OptimizationLevel::o3;
     std::vector<std::string> include_dirs;
     std::vector<std::string> files;
