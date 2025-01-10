@@ -33,9 +33,11 @@
 
 #pragma once
 #include <algorithm>
+#include <chrono>
 #include <functional>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -875,6 +877,8 @@ public:
             if (all_done) {
                 break;
             }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
 
