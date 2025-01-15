@@ -80,5 +80,5 @@ After compilation, you can just run the executable and your project will be comp
 
 ### Features
 
-- [ ] Command Queue
+- [x] Command Queue
 - [ ] Task
