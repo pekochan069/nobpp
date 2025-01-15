@@ -2,8 +2,8 @@
  * @file nobpp.hpp
  * @author pekochan069 (pekochan069@gmail.com)
  * @brief NoBuild C++
- * @version 0.1
- * @date 2025-01-02
+ * @version 0.2
+ * @date 2025-01-18
  * @link https://github.com/pekochan069/nobpp
  *
  * @copyright MIT License
@@ -37,87 +37,15 @@
 #include <functional>
 #include <initializer_list>
 #include <iostream>
+#include <mutex>
+#include <queue>
+#include <random>
 #include <string>
 #include <thread>
-#include <type_traits>
 #include <unordered_set>
 #include <vector>
 
-namespace nobpp {
-
-enum struct Compiler { clang, gcc };
-enum struct Language { c, cpp };
-enum struct TargetOS { windows, linux };
-enum struct OptimizationLevel { none, o1, o2, o3, os, oz };
-
-std::vector<std::string> split(const std::string& str, const char delimiter) {
-    std::vector<std::string> parts;
-    std::string part;
-
-    for (const char c : str) {
-        if (c == delimiter) {
-            parts.push_back(part);
-            part = "";
-        } else {
-            part += c;
-        }
-    }
-
-    parts.push_back(part);
-
-    return parts;
-}
-
-std::vector<std::string> split(const std::string& str,
-                               std::string&& delimiter) {
-    std::vector<std::string> parts;
-    std::string part;
-
-    for (const char c : str) {
-        if (c == delimiter[0]) {
-            parts.push_back(part);
-            part = "";
-        } else {
-            part += c;
-        }
-    }
-
-    parts.push_back(part);
-
-    return parts;
-}
-
-std::string join(std::vector<std::string> parts, const char delimiter) {
-    std::string out = "";
-
-    for (size_t i = 0; i < parts.size(); ++i) {
-        out += parts[i];
-
-        if (i != parts.size() - 1) {
-            out += delimiter;
-        }
-    }
-
-    return out;
-}
-
-std::string join(std::vector<std::string> parts, std::string&& delimiter) {
-    std::string out = "";
-
-    for (size_t i = 0; i < parts.size(); ++i) {
-        out += parts[i];
-
-        if (i != parts.size() - 1) {
-            out += delimiter;
-        }
-    }
-
-    return out;
-}
-
 #ifdef _WIN32
-constexpr char PATH_SEPARATOR = '\\';
-
     #define WIN32_LEAN_AND_MEAN
     #include <process.h>
     #include <stdio.h>
@@ -125,9 +53,261 @@ constexpr char PATH_SEPARATOR = '\\';
     #include <tchar.h>
     #include <windows.h>
     #pragma comment(lib, "User32.lib")
+#elif __linux__
+#endif
 
-std::vector<std::string> readdir(
-    const wchar_t* wtarget_dir,
+namespace nobpp {
+
+namespace nanoid {
+/*
+The MIT License (MIT)
+
+Copyright 2020 Alan Ramírez Herrera <alan5142@hotmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+using string_alphabet = std::string const;
+using string_alphabet_parameter = string_alphabet&;
+
+/**
+ * Contains a set of useful alphabets
+ */
+namespace alphabets {
+/**
+ * Default alphabet
+ */
+string_alphabet DEFAULT_ALPHABET =
+    "_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/**
+ * Only numbers (0 to 9)
+ */
+string_alphabet NUMBERS = "0123456789";
+
+/**
+ * Uppercase english letters
+ */
+string_alphabet UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/**
+ * Lowercase english letters
+ */
+string_alphabet LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
+
+/**
+ * Numbers and english alphabet without lookalikes: 1, l, I, 0, O, o, u, v, 5,
+ * S, s
+ */
+string_alphabet NO_LOOK_ALIKES =
+    "2346789ABCDEFGHJKLMNPQRTUVWXYZabcdefghijkmnpqrtwxyz";
+}  // namespace alphabets
+
+namespace details {
+inline void generate_random_bytes(std::vector<std::uint8_t>::iterator begin,
+    std::vector<std::uint8_t>::iterator end) {
+    static std::random_device device;
+    std::generate(begin, end, []() { return device(); });
+}
+
+template <typename F>
+struct is_invocable
+    : std::is_constructible<
+          std::function<void(std::vector<std::uint8_t>::iterator,
+              std::vector<std::uint8_t>::iterator)>,
+          std::reference_wrapper<typename std::remove_reference<F>::type>> {};
+}  // namespace details
+
+/**
+ * Generates a random id
+ * @tparam RandomGenerator random numeric generator, it must be a callable
+ * object with two arguments of type std::vector<uint8_t>::iterator: begin and
+ * end
+ * @param random_device random device callable object
+ * @param alphabet set of characters to be used to generate the random id
+ * @param length id length
+ * @return string with random id
+ */
+template <class RandomGenerator,
+    class =
+        typename std::enable_if<details::is_invocable<RandomGenerator>::value>>
+inline std::string generate(RandomGenerator& random_device,
+    string_alphabet_parameter alphabet = alphabets::DEFAULT_ALPHABET,
+    int length = 21) {
+    if (alphabet.empty() || alphabet.size() >= 256) {
+        throw std::invalid_argument(
+            "Alphabet must contain between 1 and 255 sybols.");
+    }
+    if (length <= 0) {
+        throw std::invalid_argument("Size must be greater than zero.");
+    }
+
+    auto mask = (2 << static_cast<int>(
+                     std::floor(std::log(alphabet.size() - 1) / std::log(2)))) -
+                1;
+    auto step =
+        static_cast<int>(std::ceil(1.6 * mask * length / alphabet.size()));
+
+    auto id_builder = std::string();
+    id_builder.reserve(length);
+    auto count = 0;
+
+    auto bytes = std::vector<std::uint8_t>(step);
+
+    while (true) {
+        random_device(std::begin(bytes), std::end(bytes));
+        for (auto i = 0; i < step; ++i) {
+            auto alphabet_index = bytes[i] & mask;
+            if (alphabet_index >= alphabet.length())
+                continue;
+
+            id_builder.push_back(alphabet[alphabet_index]);
+            if (++count == length) {
+                return id_builder;
+            }
+        }
+    }
+}
+
+/**
+ * Generates a random id
+ * @details it uses class "nanoid::random_number_generator" as id generator
+ * @param alphabet set of characters to be used to generate the random id
+ * @param length id length
+ * @return string with random id
+ */
+inline std::string generate(
+    string_alphabet_parameter alphabet = alphabets::DEFAULT_ALPHABET,
+    int length = 21) {
+    return generate(details::generate_random_bytes, alphabet, length);
+}
+
+/**
+ * Generates a random id
+ * @details it uses class "nanoid::random_number_generator" as id generator
+ * @param alphabet set of characters to be used to generate the random id
+ * @param length id length
+ * @return string with random id
+ */
+inline std::string generate(char const* const alphabet, int length = 21) {
+    return generate(string_alphabet_parameter(alphabet), length);
+}
+
+/**
+ * Generates a random id of given length
+ * @param size random id length
+ * @return string with random id
+ */
+inline std::string generate(int size) {
+    return generate(alphabets::DEFAULT_ALPHABET, size);
+}
+}  // namespace nanoid
+
+#ifdef _WIN32
+
+constexpr char PATH_SEPARATOR = '\\';
+
+class Process {
+public:
+    Process() = default;
+    Process(const char* command) : command(command) {}
+    Process(const std::string& command) : command(command) {}
+    Process(const Process&) = delete;
+    Process& operator=(const Process&) = delete;
+
+    void set_command(const std::string& command) noexcept {
+        self.command = command;
+    }
+
+    /**
+     * @brief run process
+     *
+     * @return `false` if error occured.
+     * @return `true` if successfully ran the command.
+     */
+    bool run() {
+        if (self.command == "") {
+            return false;
+        }
+
+        STARTUPINFOW startup_info;
+        PROCESS_INFORMATION process_info;
+
+        ZeroMemory(&startup_info, sizeof(startup_info));
+        ZeroMemory(&process_info, sizeof(process_info));
+
+        startup_info.cb = sizeof(startup_info);
+
+        std::wstring wcommand(self.command.begin(), self.command.end());
+
+        BOOL create_result = CreateProcessW(nullptr,
+            const_cast<wchar_t*>(wcommand.c_str()), nullptr, nullptr, FALSE, 0,
+            nullptr, nullptr, &startup_info, &process_info);
+
+        if (!create_result) {
+            return false;
+        }
+
+        WaitForSingleObject(process_info.hProcess, INFINITE);
+
+        CloseHandle(process_info.hProcess);
+        CloseHandle(process_info.hThread);
+
+        self.command = "";
+
+        return true;
+    }
+
+private:
+    Process& self = *this;
+
+    std::string command = "";
+};
+
+void create_process(const std::string& command) {
+    if (command == "") {
+        return;
+    }
+
+    STARTUPINFOW startup_info;
+    PROCESS_INFORMATION process_info;
+
+    ZeroMemory(&startup_info, sizeof(startup_info));
+    ZeroMemory(&process_info, sizeof(process_info));
+
+    startup_info.cb = sizeof(startup_info);
+
+    std::wstring wcommand(command.begin(), command.end());
+
+    BOOL create_result =
+        CreateProcessW(nullptr, const_cast<wchar_t*>(wcommand.c_str()), nullptr,
+            nullptr, FALSE, 0, nullptr, nullptr, &startup_info, &process_info);
+
+    if (!create_result) {
+        return;
+    }
+
+    WaitForSingleObject(process_info.hProcess, INFINITE);
+
+    CloseHandle(process_info.hProcess);
+    CloseHandle(process_info.hThread);
+}
+
+std::vector<std::string> readdir(const wchar_t* wtarget_dir,
     std::function<bool(const std::string&)> file_predicate, bool recursive) {
     std::vector<std::string> files;
     size_t length_of_arg;
@@ -176,8 +356,8 @@ std::vector<std::string> readdir(
         const std::string file_name(wfile_name.begin(), wfile_name.end());
 
         if (file_predicate(file_name)) {
-            std::string target_dir(wtarget_dir,
-                                   wtarget_dir + wcslen(wtarget_dir));
+            std::string target_dir(
+                wtarget_dir, wtarget_dir + wcslen(wtarget_dir));
             files.push_back(target_dir + PATH_SEPARATOR + file_name);
         }
     } while (FindNextFileW(hFind, &ffd) != 0);
@@ -192,8 +372,7 @@ std::vector<std::string> readdir(
     return files;
 }
 
-std::vector<std::string> readdir(
-    const std::string& target,
+std::vector<std::string> readdir(const std::string& target,
     std::function<bool(const std::string&)> file_predicate, bool recursive) {
     std::wstring wtarget = std::wstring(target.begin(), target.end());
     std::replace(wtarget.begin(), wtarget.end(), '/', PATH_SEPARATOR);
@@ -248,81 +427,165 @@ void createDirectoryRecursively(const std::string& target_dir) {
         std::wstring(target_dir.begin(), target_dir.end());
     createDirectoryRecursively(wtarget_dir);
 }
-
-void run_command_sync(const std::string& command) {
-    _spawnlp(_P_WAIT, "powershell.exe", "powershell.exe", "-c", command.c_str(),
-             NULL);
-}
-
-void run_command_async(const std::string& command) {
-    _spawnlp(_P_NOWAIT, "powershell.exe", "powershell.exe", "-c",
-             command.c_str(), NULL);
-}
 #else
 constexpr char PATH_SEPARATOR = '/';
 
     #include <dirent.h>
-std::vector<std::string> readdir(std::string target) { return {}; }
+std::vector<std::string> readdir(std::string target) {
+    return {};
+}
 
 void run_command_sync(const std::string& command) {}
 
 void run_command_async(const std::string& command) {}
 #endif
 
-bool is_c_file(const std::string& path) {
-    const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
-    const std::string file_name = parts[parts.size() - 1];
+std::vector<std::string> split(
+    const std::string& str, const char delimiter) noexcept {
+    std::vector<std::string> parts;
+    std::string part;
 
-    return path.find(".c") != std::string::npos;
+    for (const char c : str) {
+        if (c == delimiter) {
+            parts.push_back(part);
+            part = "";
+        } else {
+            part += c;
+        }
+    }
+
+    parts.push_back(part);
+
+    return parts;
 }
 
-bool is_c_header_file(const std::string& path) {
-    const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
-    const std::string file_name = parts[parts.size() - 1];
+std::vector<std::string> split(
+    const std::string& str, const std::string& delimiter) noexcept {
+    std::vector<std::string> parts;
+    std::string part;
 
-    return path.find(".h") != std::string::npos;
+    for (const char c : str) {
+        if (c == delimiter[0]) {
+            parts.push_back(part);
+            part = "";
+        } else {
+            part += c;
+        }
+    }
+
+    parts.push_back(part);
+
+    return parts;
 }
 
-bool is_cpp_file(const std::string& path) {
-    static const std::unordered_set<std::string> cpp_extensions = {
-        ".cpp", ".cc", ".c++", ".cxx", ".mpp", ".ipp", ".ixx", ".cppm"};
+std::string join(
+    const std::vector<std::string>& parts, const char delimiter) noexcept {
+    if (parts.size() == 0) {
+        return "";
+    } else if (parts.size() == 1) {
+        return parts[0];
+    }
 
-    const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
-    const std::string file_name = parts[parts.size() - 1];
-
-    size_t pos = file_name.rfind('.');
-    if (pos == std::string::npos) return false;
-    std::string ext = file_name.substr(pos);
-    return cpp_extensions.find(ext) != cpp_extensions.end();
-}
-
-bool is_cpp_header_file(const std::string& path) {
-    static const std::unordered_set<std::string> cpp_header_extensions = {
-        ".h", ".hh", ".hpp", ".hxx", ".h++", ".inl"};
-
-    const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
-    const std::string file_name = parts[parts.size() - 1];
-
-    size_t pos = file_name.rfind('.');
-    if (pos == std::string::npos) return false;
-    std::string ext = file_name.substr(pos);
-    return cpp_header_extensions.find(ext) != cpp_header_extensions.end();
-}
-
-std::string join(const std::vector<std::string>& list,
-                 std::string&& delimiter = " ") {
     std::string out = "";
 
-    for (auto it = list.cbegin(); it != list.cend(); ++it) {
-        out += *it;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        out += parts[i];
 
-        if (it != list.cend() - 1) {
+        if (i != parts.size() - 1) {
             out += delimiter;
         }
     }
 
     return out;
 }
+
+std::string join(const std::vector<std::string>& parts,
+    const std::string& delimiter) noexcept {
+    if (parts.size() == 0) {
+        return "";
+    } else if (parts.size() == 1) {
+        return parts[0];
+    }
+
+    std::string out = "";
+
+    for (size_t i = 0; i < parts.size(); ++i) {
+        out += parts[i];
+
+        if (i != parts.size() - 1) {
+            out += delimiter;
+        }
+    }
+
+    return out;
+}
+
+bool is_c_file(const std::string& path) noexcept {
+    const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
+
+    if (parts.size() == 0) {
+        return false;
+    }
+
+    const std::string file_name = parts[parts.size() - 1];
+
+    return path.find(".c") != std::string::npos;
+}
+
+bool is_c_header_file(const std::string& path) noexcept {
+    const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
+
+    if (parts.size() == 0) {
+        return false;
+    }
+
+    const std::string file_name = parts[parts.size() - 1];
+
+    return path.find(".h") != std::string::npos;
+}
+
+bool is_cpp_file(const std::string& path) noexcept {
+    static const std::unordered_set<std::string> cpp_extensions = {
+        ".cpp", ".cc", ".c++", ".cxx", ".mpp", ".ipp", ".ixx", ".cppm"};
+
+    const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
+
+    if (parts.size() == 0) {
+        return false;
+    }
+
+    const std::string file_name = parts[parts.size() - 1];
+
+    size_t pos = file_name.rfind('.');
+    if (pos == std::string::npos)
+        return false;
+    std::string ext = file_name.substr(pos);
+    return cpp_extensions.find(ext) != cpp_extensions.end();
+}
+
+bool is_cpp_header_file(const std::string& path) noexcept {
+    static const std::unordered_set<std::string> cpp_header_extensions = {
+        ".h", ".hh", ".hpp", ".hxx", ".h++", ".inl"};
+
+    const std::vector<std::string> parts = split(path, PATH_SEPARATOR);
+
+    if (parts.size() == 0) {
+        return false;
+    }
+
+    const std::string file_name = parts[parts.size() - 1];
+
+    size_t pos = file_name.rfind('.');
+    if (pos == std::string::npos)
+        return false;
+    std::string ext = file_name.substr(pos);
+    return cpp_header_extensions.find(ext) != cpp_header_extensions.end();
+}
+
+enum struct Compiler { clang, gcc };
+enum struct Language { c, cpp };
+enum struct TargetOS { windows, linux };
+enum struct OptimizationLevel { none, o1, o2, o3, os, oz };
 
 /**
  * @brief Command Builder to create and run build commands
@@ -360,7 +623,7 @@ public:
      */
     CommandBuilder() = default;
 
-    CommandBuilder& set_compiler(Compiler compiler) {
+    CommandBuilder& set_compiler(Compiler compiler) noexcept {
         self.compiler = compiler;
         return self;
     }
@@ -376,7 +639,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& set_language(Language language) {
+    CommandBuilder& set_language(Language language) noexcept {
         self.language = language;
         return self;
     }
@@ -392,7 +655,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& set_target_os(TargetOS os) {
+    CommandBuilder& set_target_os(TargetOS os) noexcept {
         self.target_os = os;
         return self;
     }
@@ -413,7 +676,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& set_optimization_level(OptimizationLevel level) {
+    CommandBuilder& set_optimization_level(OptimizationLevel level) noexcept {
         self.optimization_level = level;
         return self;
     }
@@ -429,7 +692,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_include_dir(const char* dir) {
+    CommandBuilder& add_include_dir(const char* dir) noexcept {
         self.include_dirs.push_back(dir);
         return self;
     }
@@ -445,7 +708,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_include_dir(const std::string& dir) {
+    CommandBuilder& add_include_dir(const std::string& dir) noexcept {
         self.include_dirs.push_back(dir);
         return self;
     }
@@ -461,10 +724,11 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_include_dirs(std::initializer_list<std::string> dirs) {
+    CommandBuilder& add_include_dirs(
+        std::initializer_list<std::string> dirs) noexcept {
         self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
-        self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
-                                 dirs.end());
+        self.include_dirs.insert(
+            self.include_dirs.end(), dirs.begin(), dirs.end());
         return self;
     }
 
@@ -479,10 +743,10 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_include_dirs(std::vector<std::string>&& dirs) {
+    CommandBuilder& add_include_dirs(std::vector<std::string>&& dirs) noexcept {
         self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
-        self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
-                                 dirs.end());
+        self.include_dirs.insert(
+            self.include_dirs.end(), dirs.begin(), dirs.end());
         return self;
     }
 
@@ -497,10 +761,11 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_include_dirs(const std::vector<std::string>& dirs) {
+    CommandBuilder& add_include_dirs(
+        const std::vector<std::string>& dirs) noexcept {
         self.include_dirs.reserve(self.include_dirs.size() + dirs.size());
-        self.include_dirs.insert(self.include_dirs.end(), dirs.begin(),
-                                 dirs.end());
+        self.include_dirs.insert(
+            self.include_dirs.end(), dirs.begin(), dirs.end());
         return self;
     }
 
@@ -515,7 +780,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_file(const char* file) {
+    CommandBuilder& add_file(const char* file) noexcept {
         self.files.push_back(file);
         return self;
     }
@@ -531,7 +796,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_file(const std::string& file) {
+    CommandBuilder& add_file(const std::string& file) noexcept {
         self.files.push_back(file);
         return self;
     }
@@ -548,8 +813,8 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(const char* target_directory,
-                              bool recursive = true) {
+    CommandBuilder& add_files(
+        const char* target_directory, bool recursive = true) {
         std::function<bool(const std::string&)> file_predicate;
 
         if (self.language == Language::c) {
@@ -578,8 +843,8 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(const std::string& target_directory,
-                              bool recursive = true) {
+    CommandBuilder& add_files(
+        const std::string& target_directory, bool recursive = true) {
         std::function<bool(const std::string&)> file_predicate;
 
         if (self.language == Language::c) {
@@ -612,8 +877,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(
-        const char* target_directory,
+    CommandBuilder& add_files(const char* target_directory,
         std::function<bool(const std::string&)> file_predicate,
         bool recursive = true) {
         const std::vector<std::string> file_list =
@@ -640,8 +904,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(
-        const std::string& target_directory,
+    CommandBuilder& add_files(const std::string& target_directory,
         std::function<bool(const std::string&)> file_predicate,
         bool recursive = true) {
         const std::vector<std::string> file_list =
@@ -663,7 +926,8 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(std::initializer_list<std::string> files) {
+    CommandBuilder& add_files(
+        std::initializer_list<std::string> files) noexcept {
         self.files.reserve(self.files.size() + files.size());
         self.files.insert(self.files.end(), files.begin(), files.end());
         return self;
@@ -681,7 +945,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(std::vector<std::string>&& files) {
+    CommandBuilder& add_files(std::vector<std::string>&& files) noexcept {
         self.files.reserve(self.files.size() + files.size());
         self.files.insert(self.files.end(), files.begin(), files.end());
         return self;
@@ -698,7 +962,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_files(const std::vector<std::string>& files) {
+    CommandBuilder& add_files(const std::vector<std::string>& files) noexcept {
         self.files.reserve(self.files.size() + files.size());
         self.files.insert(self.files.end(), files.begin(), files.end());
         return self;
@@ -715,7 +979,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_option(const char* opt) {
+    CommandBuilder& add_option(const char* opt) noexcept {
         self.options.push_back(opt);
         return self;
     }
@@ -731,7 +995,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_option(const std::string& opt) {
+    CommandBuilder& add_option(const std::string& opt) noexcept {
         self.options.push_back(opt);
         return self;
     }
@@ -747,7 +1011,8 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_options(std::initializer_list<std::string>&& opts) {
+    CommandBuilder& add_options(
+        std::initializer_list<std::string>&& opts) noexcept {
         for (const std::string& opt : opts) {
             self.options.push_back(opt);
         }
@@ -765,7 +1030,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& add_options(const std::vector<std::string>& opts) {
+    CommandBuilder& add_options(const std::vector<std::string>& opts) noexcept {
         for (const std::string& opt : opts) {
             self.options.push_back(opt);
         }
@@ -783,7 +1048,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& set_build_dir(const std::string& dir) {
+    CommandBuilder& set_build_dir(const std::string& dir) noexcept {
         self.build_dir = dir;
         return self;
     }
@@ -799,7 +1064,7 @@ public:
      * ```
      * @endcode
      */
-    CommandBuilder& set_output(const std::string& output) {
+    CommandBuilder& set_output(const std::string& output) noexcept {
         std::string out = output;
 
         if (self.target_os == TargetOS::windows &&
@@ -889,7 +1154,7 @@ public:
             }
         }
 
-        return join(command);
+        return join(command, ' ');
     }
 
     /**
@@ -903,7 +1168,10 @@ public:
      */
     void run() const {
         const std::string command = create_command();
-        run_command_sync(command);
+        Process process;
+        process.set_command(command);
+
+        create_process(command);
     }
 
 private:
@@ -919,6 +1187,13 @@ private:
     std::string build_dir;
     std::string output;
 };
+
+/**
+ * @brief Creates a pool of process that will be used to run multiple processes
+ * at once
+ *
+ */
+class ProcessPool {};
 
 /**
  * @brief Queue of commands that can run multiple commands in parallel
@@ -943,93 +1218,76 @@ private:
  */
 class CommandQueue {
 public:
-    /**
-     * @brief Construct a new Command Queue object
-     *
-     * @param num_processes The number of processes to run in parallel
-     * @code
-     * ```cpp
-     * nobpp::CommandQueue queue = nobpp::CommandQueue(4);
-     * ```
-     * @endcode
-     */
-    CommandQueue(size_t num_processes = 4) : num_processes(num_processes) {};
+    CommandQueue(size_t max_processes = 8) noexcept {
+        self.workers.reserve(max_processes);
+
+        for (size_t i = 0; i < max_processes; ++i) {
+            self.workers.emplace_back([this]() { this->create_worker(); });
+        }
+    }
+    CommandQueue(CommandQueue&) = delete;
+    CommandQueue& operator=(CommandQueue&) = delete;
+
+    ~CommandQueue() {
+        self.all_finished = true;
+        self.job_cv.notify_all();
+
+        for (size_t i = 0; i < self.workers.size(); ++i) {
+            self.workers[i].join();
+        }
+    }
 
     /**
-     * @brief Add command builder to the queue
+     * @brief Add job to the queue
      *
      * @param builder
      * @return `CommandQueue&`
-     * @code
-     * ```cpp
-     * const nobpp::CommandBuilder builder = nobpp::CommandBuilder();
-     * queue.add_builder(builder);
-     * ```
-     * @endcode
      */
     CommandQueue& add_builder(const CommandBuilder& builder) {
-        self.command_builders.push_back(builder);
+        if (self.all_finished) {
+            std::cout << "Worker Pool disabled\n";
+            return self;
+        }
+        {
+            std::lock_guard<std::mutex> lock(self.job_mutex);
+            self.queue.push(
+                [&builder]() { create_process(builder.create_command()); });
+        }
+        self.job_cv.notify_one();
+
         return self;
     }
 
-    void run() {
-        for (const CommandBuilder& builder : self.command_builders) {
-            const std::string command = builder.create_command();
-            const std::string id = std::to_string(processes.size());
-
-            processes.push_back({command, id, false});
-        }
-
-        for (size_t i = 0; i < num_processes; ++i) {
-            if (i >= processes.size()) {
-                break;
-            }
-
-            const Process& process = processes[i];
-            run_command_sync(process.command);
-            processes[i].running = true;
-        }
-
-        while (true) {
-            for (size_t i = 0; i < processes.size(); ++i) {
-                Process& process = processes[i];
-
-                if (process.running) {
-                    continue;
-                }
-
-                run_command_sync(process.command);
-                processes[i].running = true;
-            }
-
-            bool all_done = true;
-            for (const Process& process : processes) {
-                if (!process.running) {
-                    all_done = false;
-                    break;
-                }
-            }
-
-            if (all_done) {
-                break;
-            }
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-    }
-
 private:
-    struct Process {
-        std::string command;
-        std::string id;
-        bool running;
-    };
-
     CommandQueue& self = *this;
 
-    size_t num_processes;
-    std::vector<CommandBuilder> command_builders;
-    std::vector<Process> processes;
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> queue;
+
+    std::mutex job_mutex;
+    std::condition_variable job_cv;
+
+    bool all_finished = false;
+
+private:
+    void create_worker() {
+        while (true) {
+            std::unique_lock<std::mutex> lock(self.job_mutex);
+
+            self.job_cv.wait(lock,
+                [this]() { return !this->queue.empty() || self.all_finished; });
+
+            if (self.all_finished && self.queue.empty()) {
+                return;
+            }
+
+            std::function<void()> job = std::move(self.queue.front());
+            self.queue.pop();
+            lock.unlock();
+
+            job();
+        }
+    }
 };
 
 }  // namespace nobpp
