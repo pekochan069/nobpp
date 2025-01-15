@@ -59,8 +59,8 @@ int main()
 `nobpp` requires clang version which support c++14 or higher.
 
 ```sh
-clang++ -std=c++14 build.cpp -o build.exe # On Windows
-clang++ -std=c++14 build.cpp -o build     # On Linux
+clang++ -std=c++14 -O3 build.cpp -o build.exe # On Windows
+clang++ -std=c++14 -O3 build.cpp -o build     # On Linux
 ```
 
 After compilation, you can just run the executable and your project will be compiled.
