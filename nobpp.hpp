@@ -637,6 +637,7 @@ public:
      */
     CommandBuilder& set_project_name(const std::string& project_name) noexcept {
         self.project_name = project_name;
+        return self;
     }
 
     /**
@@ -652,6 +653,7 @@ public:
      */
     CommandBuilder& set_project_name(const char* project_name) noexcept {
         self.project_name = project_name;
+        return self;
     }
 
     /**
