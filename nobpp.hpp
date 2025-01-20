@@ -1118,14 +1118,6 @@ public:
                 break;
         }
 
-        if (self.mode == Mode::debug) {
-            command.push_back("/D_DEBUG");
-            command.push_back("/U_NDEBUG");
-        } else if (self.mode == Mode::release) {
-            command.push_back("/U_DEBUG");
-            command.push_back("/D_NDEBUG");
-        }
-
         switch (self.optimization_level) {
             case OptimizationLevel::none:
                 command.push_back("-O0");
