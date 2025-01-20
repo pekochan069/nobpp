@@ -662,17 +662,6 @@ public:
     }
 
     /**
-     * @brief Set the mode (Release or Debug)
-     *
-     * @param mode `nobpp::Mode::release` or `nobpp::Mode::debug`
-     * @return `CommandBuilder&`
-     */
-    CommandBuilder& set_mode(Mode mode) noexcept {
-        self.mode = mode;
-        return self;
-    }
-
-    /**
      * @brief Set the optimization level
      *
      * @param level `nobpp::OptimizationLevel::none`
@@ -1192,7 +1181,6 @@ private:
     Compiler compiler = Compiler::clang;
     Language language = Language::cpp;
     TargetOS target_os;
-    Mode mode = Mode::release;
     OptimizationLevel optimization_level = OptimizationLevel::o3;
     std::vector<std::string> include_dirs;
     std::vector<std::string> files;
