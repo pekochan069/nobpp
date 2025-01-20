@@ -585,7 +585,7 @@ bool is_cpp_header_file(const std::string& path) noexcept {
 enum struct Compiler { clang, gcc };
 enum struct Language { c, cpp };
 enum struct TargetOS { windows, linux };
-enum struct OptimizationLevel { none, o1, o2, o3, os, oz };
+enum struct OptimizationLevel { o0, o1, o2, o3, os, oz };
 enum struct Mode { debug, release };
 
 /**
@@ -1108,7 +1108,7 @@ public:
         }
 
         switch (self.optimization_level) {
-            case OptimizationLevel::none:
+            case OptimizationLevel::o0:
                 command.push_back("-O0");
                 break;
             case OptimizationLevel::o1:
