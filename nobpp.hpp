@@ -624,6 +624,47 @@ public:
      */
     CommandBuilder() = default;
 
+    /**
+     * @brief Set the project name
+     *
+     * @param project_name `const std::string&`
+     * @return `CommandBuilder&`
+     * @code
+     * ```cpp
+     * builder.set_project_name("Hello Project");
+     * ```
+     * @endcode
+     */
+    CommandBuilder& set_project_name(const std::string& project_name) noexcept {
+        self.project_name = project_name;
+    }
+
+    /**
+     * @brief Set the project name
+     *
+     * @param project_name `const char*`
+     * @return `CommandBuilder&`
+     * @code
+     * ```cpp
+     * builder.set_project_name("Hello Project");
+     * ```
+     * @endcode
+     */
+    CommandBuilder& set_project_name(const char* project_name) noexcept {
+        self.project_name = project_name;
+    }
+
+    /**
+     * @brief Set the compiler
+     *
+     * @param compiler `nobpp::Compiler`
+     * @return `CommandBuilder&`
+     * @code
+     * ```cpp
+     * builder.set_compiler(nobpp::Compiler::clang);
+     * ```
+     * @endcode
+     */
     CommandBuilder& set_compiler(Compiler compiler) noexcept {
         self.compiler = compiler;
         return self;
@@ -1173,11 +1214,19 @@ public:
         process.set_command(command);
 
         create_process(command);
+
+        if (self.project_name == "") {
+            std::cout << "Compile finished\n";
+        } else {
+            std::cout << "Project " << self.project_name
+                      << " compile finished\n";
+        }
     }
 
 private:
     CommandBuilder& self = *this;
 
+    std::string project_name = "";
     Compiler compiler = Compiler::clang;
     Language language = Language::cpp;
     TargetOS target_os;
